@@ -14,6 +14,9 @@
 # ==============================================================================
 
 """Library for running matmuls."""
+from __future__ import (
+    annotations,
+)  # Support PEP 604 – Allow writing union types as X | Y
 import enum
 import itertools
 import logging
@@ -113,10 +116,10 @@ def generate_tiling_configs(
         tilings_m,
         tilings_n,
         tilings_k,
+        split_ks,
         lhs_layouts,
         rhs_layouts,
         result_layouts,
-        split_ks,
         num_stages,
         num_warps,
     )
