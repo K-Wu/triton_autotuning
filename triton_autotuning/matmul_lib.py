@@ -159,6 +159,7 @@ def _matmul_kernel(
     # force recompilation on different num_warps/num_stages.
     force_num_warps: tl.constexpr,  # pylint: disable=unused-argument
     force_num_stages: tl.constexpr,  # pylint: disable=unused-argument
+    IS_ATOMIC_ADD: tl.constexpr,
 ):
     """Computes a block-level matmul."""
     even_k = k % (block_k * split_k) == 0
@@ -209,7 +210,10 @@ def _matmul_kernel(
     out += rm[:, None] * stride_cm + rn[None, :] * stride_cn + pid2 * m * n
     out += m * n * pid1
     mask = (rm < m)[:, None] & (rn < n)[None, :]
-    tl.store(out, acc, mask=mask)
+    if IS_ATOMIC_ADD:
+        tl.atomic_add(out, acc, mask=mask)
+    else:
+        tl.store(out, acc, mask=mask)
 
 
 @triton.jit
@@ -309,6 +313,7 @@ def benchmark_matmul_tiling(
             force_num_warps=tiling.num_warps,
             force_num_stages=tiling.num_stages,
             acc_ty=tl.float32,
+            IS_ATOMIC_ADD=False,
         )
         if tiling.SPLIT_K != 1:
             # Run reduction kernel.
