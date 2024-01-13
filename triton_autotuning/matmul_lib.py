@@ -78,6 +78,7 @@ class MatmulSize(typing.NamedTuple):
     M: int
     N: int
     K: int
+    # The following two are not used in computation in the current code
     quantized_lhs: QuantizedInputType
     quantized_rhs: QuantizedInputType
 
