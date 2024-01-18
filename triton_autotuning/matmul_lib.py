@@ -48,6 +48,7 @@ class QuantizedInputType(enum.Enum):
     FLOAT16 = "float16"
     INT8 = "int8"
     FLOAT8 = "float8"
+    FLOAT32 = "float32"
 
 
 @enum.unique
@@ -161,6 +162,8 @@ def _matmul_kernel(
     force_num_warps: tl.constexpr,  # pylint: disable=unused-argument
     force_num_stages: tl.constexpr,  # pylint: disable=unused-argument
     IS_ATOMIC_ADD: tl.constexpr,
+    AB_DTYPE: tl.constexpr = None,  # convert A and B to this type if not None. The argument name is from triton matmul kernel
+    ALLOW_TF32: tl.constexpr = True,  # This flag enables or disables tensor core for multiply-accumulate
 ):
     """Computes a block-level matmul."""
     even_k = k % (block_k * split_k) == 0
@@ -197,11 +200,15 @@ def _matmul_kernel(
             b = tl.load(
                 _fix_type_for_load(rhs), mask=rk[:, None] < ki, other=0
             )
-        casted_a = a.to(lhs.dtype.element_ty, bitcast=True).to(
-            out.dtype.element_ty
-        )
-        casted_b = b.to(out.dtype.element_ty)
-        acc += tl.dot(casted_a, casted_b, allow_tf32=True)
+        if AB_DTYPE is not None:
+            casted_a = a.to(AB_DTYPE)
+            casted_b = b.to(AB_DTYPE)
+        else:
+            casted_a = a.to(lhs.dtype.element_ty, bitcast=True).to(
+                out.dtype.element_ty
+            )
+            casted_b = b.to(out.dtype.element_ty)
+        acc += tl.dot(casted_a, casted_b, allow_tf32=ALLOW_TF32)
         lhs += block_k * split_k * stride_ak
         rhs += block_k * split_k * stride_bk
     acc = acc.to(out.dtype.element_ty)
@@ -287,7 +294,7 @@ def benchmark_matmul_tiling(
 
     def run_matmul():
         used_output = c if tiling.SPLIT_K == 1 else scratchpad
-        _matmul_kernel[grid](
+        compiled_kernel = _matmul_kernel[grid](
             a,
             b,
             used_output,
@@ -316,6 +323,7 @@ def benchmark_matmul_tiling(
             acc_ty=tl.float32,
             IS_ATOMIC_ADD=False,
         )
+        # print(compiled_kernel.asm["ttir"])
         if tiling.SPLIT_K != 1:
             # Run reduction kernel.
             _reduce_kernel[(triton.cdiv(dims.M * dims.N, 1024),)](
@@ -424,6 +432,8 @@ def _init_matmul_argument(
         )
     elif quantization == QuantizedInputType.FLOAT16:
         return torch.randn(rows, cols, device="cuda", dtype=torch.float16)
+    elif quantization == QuantizedInputType.FLOAT32:
+        return torch.randn(rows, cols, device="cuda", dtype=torch.float32)
     else:
         return torch.randn(rows, cols, device="cuda", dtype=torch.bfloat16)
 
@@ -437,6 +447,7 @@ def _get_common_type(t1, t2):
         torch.int8: 1,
         torch.float16: 2,
         torch.bfloat16: 2,
+        torch.float32: 4,
     }
     if size[t1] < size[t2]:
         return t2

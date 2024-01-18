@@ -94,10 +94,10 @@ def main() -> None:
         parse_int_list(_TILINGS_M.value),
         parse_int_list(_TILINGS_N.value),
         parse_int_list(_TILINGS_K.value),
-        parse_int_list(_SPLIT_KS.value),
         parse_layout_list(_LHS_LAYOUTS.value),
         parse_layout_list(_RHS_LAYOUTS.value),
         parse_layout_list(_RESULT_LAYOUTS.value),
+        parse_int_list(_SPLIT_KS.value),
         parse_int_list(_NUM_STAGES.value),
         parse_int_list(_NUM_WARPS.value),
     )
